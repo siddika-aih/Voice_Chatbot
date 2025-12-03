@@ -1,0 +1,15 @@
+[project]
+name = "voicebot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dotenv>=0.9.9",
+    "google-genai>=1.52.0",
+    "pymupdf>=1.26.6",
+    "rich>=14.2.0",
+    "sentence-transformers>=5.1.2",
+    "sounddevice>=0.5.3",
+    "speechrecognition>=3.14.4",
+]
