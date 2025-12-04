@@ -47,3 +47,6 @@ def speech_to_text():
             )
 
             return response.text
+        
+
+print(speech_to_text())

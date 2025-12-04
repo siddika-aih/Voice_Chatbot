@@ -11,6 +11,7 @@ load_dotenv()
 api_key=os.getenv("GEMINI_API_KEY")
 
 client=genai.Client(api_key=api_key)
+
 def generate_rag_response(query_text):
     """RAG - Send query + context to Gemini"""
     context = data_retrieve(query_text)
