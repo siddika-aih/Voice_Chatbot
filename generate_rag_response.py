@@ -28,4 +28,5 @@ def generate_rag_response(query_text):
         model="gemini-2.5-flash",
         contents=[rag_prompt]
     )
+    print(response.text)
     return response.text.strip()

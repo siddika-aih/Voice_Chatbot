@@ -4,9 +4,8 @@ from generate_rag_response import generate_rag_response
 from output_data import text_to_speech
 def main():
     print("Hello from voicebot!")
-    file_path=""
-    content, embeddings = data_extract_chunk(file_path)
-    data_store_vectorstore(content, embeddings)
+
+
 
     speech_to_text()
     result=generate_rag_response(speech_to_text)
