@@ -218,7 +218,7 @@ class StreamingVoiceBot:
         
     async def run_conversation_loop(self):
         """Main conversation loop"""
-        print("🚀 DCB Bank Voice Assistant Ready!")
+        print(" DCB Bank Voice Assistant Ready!")
         
         while True:
             try:
@@ -247,10 +247,10 @@ class StreamingVoiceBot:
                 self.session_context.append({"user": query, "assistant": response})
                 
             except KeyboardInterrupt:
-                print("\n👋 Session ended")
+                print("\n Session ended")
                 break
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f" Error: {e}")
                 await self.speak_response("I apologize, I encountered an error. Please try again.")
 
 # Run the bot

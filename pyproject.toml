@@ -16,6 +16,7 @@ dependencies = [
     "playsound",
     "pydub>=0.25.1",
     "pymupdf>=1.26.6",
+    "python-docx",
     "python-dotenv>=1.2.1",
     "python-multipart>=0.0.20",
     "pyttsx3>=2.99",
