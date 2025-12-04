@@ -159,6 +159,7 @@ import numpy as np
 from main import StreamingVoiceBot
 from session_manager import session_manager
 import base64
+import uvicorn
 
 app = FastAPI(title="DCB Voice Bot API")
 
@@ -256,7 +257,7 @@ async def voice_websocket(websocket: WebSocket, session_id: str):
                     session["query_count"] += 1
                     
                 except Exception as e:
-                    print(f"❌ Error: {e}")
+                    print(f"Error: {e}")
                 
     except WebSocketDisconnect:
         print(f"🔌 Disconnected: {session_id}")
@@ -278,5 +279,4 @@ async def health_check():
     }
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="localhost", port=8000, workers=4)
+    uvicorn.run(app, host="localhost", port=8080, workers=4)

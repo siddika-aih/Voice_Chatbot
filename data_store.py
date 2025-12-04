@@ -237,57 +237,6 @@ async def vector_retrieve(query: str, top_k: int = 10) -> List[Dict]:
         "source": "vector"
     } for match in results['matches']]
 
-def bm25_retrieve(query: str, top_k: int = 10) -> List[Dict]:
-    """BM25 keyword search"""
-    if bm25_index is None:
-        return []
-    
-    tokenized_query = query.lower().split()
-    scores = bm25_index.get_scores(tokenized_query)
-    
-    # Get top_k indices
-    top_indices = np.argsort(scores)[-top_k:][::-1]
-    
-    return [{
-        "id": bm25_metadata[i]['id'],
-        "score": float(scores[i]),
-        "text": bm25_metadata[i]['text'],
-        "page": bm25_metadata[i].get('page_number', 'N/A'),
-        "source": "bm25"
-    } for i in top_indices if scores[i] > 0]
-
-async def hybrid_retrieve(query: str, top_k: int = 5, alpha: float = 0.5) -> str:
-    """Hybrid search combining vector + BM25 with RRF"""
-    # Parallel retrieval
-    vector_task = asyncio.create_task(vector_retrieve(query, top_k=10))
-    bm25_results = bm25_retrieve(query, top_k=10)
-    vector_results = await vector_task
-    
-    # Reciprocal Rank Fusion (RRF)
-    k = 60  # RRF constant
-    fused_scores = {}
-    
-    for rank, result in enumerate(vector_results):
-        doc_id = result['id']
-        fused_scores[doc_id] = fused_scores.get(doc_id, 0) + alpha / (k + rank + 1)
-    
-    for rank, result in enumerate(bm25_results):
-        doc_id = result['id']
-        fused_scores[doc_id] = fused_scores.get(doc_id, 0) + (1 - alpha) / (k + rank + 1)
-    
-    # Get top documents
-    all_results = {r['id']: r for r in vector_results + bm25_results}
-    sorted_ids = sorted(fused_scores.keys(), key=lambda x: fused_scores[x], reverse=True)[:top_k]
-    
-    # Format context
-    context = "\n\n".join([
-        f"[Document {i+1}] (Page {all_results[doc_id]['page']})\n{all_results[doc_id]['text'][:500]}"
-        for i, doc_id in enumerate(sorted_ids) if doc_id in all_results
-    ])
-    
-    return context
-
-
 
 def store_chunks_to_pinecone(index, chunks: List[Dict], embeddings: np.ndarray):
     # Prepare data to upsert
@@ -320,68 +269,62 @@ def init_pinecone_index():
 
 
 # Data ingestion with web scraping for DCB Bank
-async def ingest_dcb_website():
-    """Scrape and ingest DCB Bank website content"""
+async def ingest_single_url(url: str):
     import requests
     from bs4 import BeautifulSoup
     import uuid
-    
-    base_url = "https://www.dcb.bank.in/"
-    pages_to_scrape = [
-        "",
-        "personal-banking",
-        "business-banking", 
-        "nri-banking",
-        "about-us",
-        "customer-care"
-    ]
-    
-    all_chunks = []
-    
-    for page in pages_to_scrape:
-        try:
-            url = base_url + page
-            # FIX: Add redirect control
-            response = requests.get(url, timeout=10, allow_redirects=False)
-            
-            if response.status_code >= 400:
-                print(f"⚠️ Skipping {page} (status {response.status_code})")
-                continue
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Extract text from paragraphs
-            paragraphs = soup.find_all(['p', 'div', 'li'])
-            text = " ".join([p.get_text() for p in paragraphs])
-            
-            # Chunk text
-            words = text.split()
-            chunk_size = 500
-            overlap = 50
-            
-            for i in range(0, len(words), chunk_size - overlap):
-                chunk_text = " ".join(words[i:i+chunk_size])
-                if len(chunk_text.strip()) > 100:
-                    all_chunks.append({
-                        "id": str(uuid.uuid4()),
-                        "text": chunk_text.strip(),
-                        "page_number": f"web-{page}",
-                        "file_name": f"dcb-{page}"
-                    })
-            
-            print(f"✅ Scraped {page}")
-            
-        except Exception as e:
-            print(f"❌ Error scraping {page}: {e}")
-    
-    # Generate embeddings and store
-    embeddings = embedding_model.encode([c['text'] for c in all_chunks])
-    
-    # FIX: Direct function call (no import needed)
-    data_store_vectorstore(all_chunks, embeddings)
-    
-    # Initialize BM25
-    init_bm25(all_chunks)
-    
-    print(f"✅ Ingested {len(all_chunks)} chunks from DCB website")
-    return all_chunks
+
+    try:
+        response = requests.get(url, timeout=10, allow_redirects=True)
+        if response.status_code >= 400:
+            print(f"Skipping URL {url} with status {response.status_code}")
+            return []
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        paragraphs = soup.find_all(['p', 'div', 'li'])
+        text = " ".join([p.get_text(separator=" ", strip=True) for p in paragraphs])
+        words = text.split()
+
+        chunk_size = 1000
+        overlap = 500
+        all_chunks = []
+
+        for i in range(0, len(words), chunk_size - overlap):
+            chunk_text = " ".join(words[i:i+chunk_size])
+            if len(chunk_text.strip()) > 100:
+                all_chunks.append({
+                    "id": str(uuid.uuid4()),
+                    "text": chunk_text.strip(),
+                    "page_number": "web",
+                    "file_name": url.split("//")[-1].split("/")[0],
+                    "url": url
+                })
+
+        print(f"✅ Scraped and chunked URL: {url}")
+
+        embeddings = embedding_model.encode([c['text'] for c in all_chunks])
+        index = init_pinecone_index()
+        store_chunks_to_pinecone(index, all_chunks, embeddings)
+        init_bm25(all_chunks)
+
+        print(f"✅ Ingested {len(all_chunks)} chunks from URL")
+        return all_chunks
+
+    except Exception as e:
+        print(f"❌ Error scraping URL {url}: {e}")
+        return []
+
+
+
+async def main():
+    url="https://onlinesbi.sbi.bank.in/"
+    chunks = await ingest_single_url(url)
+    init_pinecone_index()
+    store_chunks_to_pinecone()
+    if chunks:
+        print(f"Total chunks created: {len(chunks)}")
+        if chunks:
+            print(f"First chunk preview: {chunks[0]['text'][:]}...")
+
+if __name__ == "__main__":
+    asyncio.run(main())
