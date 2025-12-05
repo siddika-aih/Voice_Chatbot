@@ -25,6 +25,7 @@ def test_rest_api():
         )
     
     result = response.json()
+    print(result)
     print(f"\n👤 You: {result['transcript']}")
     print(f"🤖 Bot: {result['response']}\n")
 
