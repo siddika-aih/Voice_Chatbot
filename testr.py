@@ -124,7 +124,96 @@
 #     asyncio.run(test_voice_websocket())
 
 
-# testr.py - Fast WebSocket client with latency tracking
+# # testr.py - Fast WebSocket client with latency tracking
+# import asyncio
+# import websockets
+# import base64
+# import numpy as np
+# import sounddevice as sd
+# import json
+# import time
+
+
+# async def test_voice_websocket():
+#     uri = "ws://localhost:8000/ws/voice/test-session"
+    
+#     try:
+#         async with websockets.connect(uri, ping_timeout=60) as websocket:
+#             print("✅ WebSocket connected!\n")
+            
+#             while True:
+#                 # Ask to continue
+#                 choice = input("🎤 Press ENTER to speak (or 'q' to quit): ")
+#                 if choice.lower() == 'q':
+#                     print("👋 Goodbye!")
+#                     break
+                
+#                 # Record audio
+#                 print("🎤 Recording for 5 seconds...")
+#                 start_time = time.time()
+                
+#                 audio = sd.rec(int(5 * 16000), samplerate=16000, channels=1, dtype='float32')
+#                 sd.wait()
+                
+#                 record_time = time.time() - start_time
+#                 print(f"✔ Recording done ({record_time:.2f}s)")
+                
+#                 # Process and send
+#                 audio_normalized = np.clip(audio.flatten(), -1.0, 1.0)
+#                 audio_int16 = (audio_normalized * 32767).astype(np.int16)
+#                 audio_bytes = audio_int16.tobytes()
+                
+#                 send_start = time.time()
+#                 await websocket.send(json.dumps({
+#                     "type": "audio",
+#                     "audio": base64.b64encode(audio_bytes).decode()
+#                 }))
+#                 print(f"📤 Audio sent ({time.time() - send_start:.2f}s)\n")
+                
+#                 # Receive responses
+#                 transcript_received = False
+#                 response_received = False
+                
+#                 try:
+#                     while not (transcript_received and response_received):
+#                         message = await asyncio.wait_for(websocket.recv(), timeout=30.0)
+#                         data = json.loads(message)
+                        
+#                         if data["type"] == "transcript":
+#                             latency = data.get("latency", 0)
+#                             print(f"👤 You [{latency}s]: {data['text']}")
+#                             transcript_received = True
+                            
+#                         elif data["type"] == "response":
+#                             latency = data.get("latency", 0)
+#                             print(f"🤖 Bot [{latency}s]: {data['text']}\n")
+#                             print("🔊 Speaking response...\n")
+#                             response_received = True
+                            
+#                         elif data["type"] == "error":
+#                             print(f"❌ Error: {data['text']}")
+#                             break
+                    
+#                     total_time = time.time() - start_time
+#                     print(f"⏱️ Total time: {total_time:.2f}s")
+#                     print("="*80 + "\n")
+                            
+#                 except asyncio.TimeoutError:
+#                     print("⏱️ Response timeout")
+                
+#     except KeyboardInterrupt:
+#         print("\n\n👋 Stopped by user")
+#     except Exception as e:
+#         print(f"❌ Error: {e}")
+
+
+# if __name__ == "__main__":
+#     print("🚀 DCB Bank Voice Assistant - WebSocket Mode")
+#     print("="*80 + "\n")
+#     asyncio.run(test_voice_websocket())
+
+
+# testr.py - Client that can interrupt bot
 import asyncio
 import websockets
 import base64
@@ -132,21 +221,24 @@ import numpy as np
 import sounddevice as sd
 import json
 import time
-
+import sys
 
 async def test_voice_websocket():
     uri = "ws://localhost:8000/ws/voice/test-session"
     
     try:
         async with websockets.connect(uri, ping_timeout=60) as websocket:
-            print("✅ WebSocket connected!\n")
+            print("✅ Connected!\n")
+            print("💡 TIP: Press ENTER while bot is speaking to interrupt!\n")
             
             while True:
-                # Ask to continue
                 choice = input("🎤 Press ENTER to speak (or 'q' to quit): ")
                 if choice.lower() == 'q':
                     print("👋 Goodbye!")
                     break
+                
+                # Send interrupt signal first (stops previous TTS)
+                await websocket.send(json.dumps({"type": "interrupt"}))
                 
                 # Record audio
                 print("🎤 Recording for 5 seconds...")
@@ -155,59 +247,54 @@ async def test_voice_websocket():
                 audio = sd.rec(int(5 * 16000), samplerate=16000, channels=1, dtype='float32')
                 sd.wait()
                 
-                record_time = time.time() - start_time
-                print(f"✔ Recording done ({record_time:.2f}s)")
+                print(f"✔ Recording done ({time.time()-start_time:.1f}s)")
                 
-                # Process and send
+                # Send audio
                 audio_normalized = np.clip(audio.flatten(), -1.0, 1.0)
                 audio_int16 = (audio_normalized * 32767).astype(np.int16)
                 audio_bytes = audio_int16.tobytes()
                 
-                send_start = time.time()
                 await websocket.send(json.dumps({
                     "type": "audio",
                     "audio": base64.b64encode(audio_bytes).decode()
                 }))
-                print(f"📤 Audio sent ({time.time() - send_start:.2f}s)\n")
+                print("📤 Sent!\n")
                 
                 # Receive responses
-                transcript_received = False
-                response_received = False
+                response_complete = False
                 
                 try:
-                    while not (transcript_received and response_received):
-                        message = await asyncio.wait_for(websocket.recv(), timeout=30.0)
+                    while not response_complete:
+                        message = await asyncio.wait_for(websocket.recv(), timeout=60.0)
                         data = json.loads(message)
                         
                         if data["type"] == "transcript":
                             latency = data.get("latency", 0)
-                            print(f"👤 You [{latency}s]: {data['text']}")
-                            transcript_received = True
+                            print(f"👤 You [{latency}s]: {data['text']}\n")
                             
                         elif data["type"] == "response":
                             latency = data.get("latency", 0)
-                            print(f"🤖 Bot [{latency}s]: {data['text']}\n")
-                            print("🔊 Speaking response...\n")
-                            response_received = True
+                            print(f"🤖 Bot [{latency}s]: {data['text']}")
+                            print("\n🔊 Bot is speaking... (Press ENTER to interrupt)")
+                            print("="*80 + "\n")
+                            response_complete = True
                             
                         elif data["type"] == "error":
-                            print(f"❌ Error: {data['text']}")
-                            break
-                    
-                    total_time = time.time() - start_time
-                    print(f"⏱️ Total time: {total_time:.2f}s")
-                    print("="*80 + "\n")
+                            print(f"❌ Error: {data['text']}\n")
+                            response_complete = True
                             
                 except asyncio.TimeoutError:
-                    print("⏱️ Response timeout")
+                    print("⏱️ Timeout\n")
                 
     except KeyboardInterrupt:
-        print("\n\n👋 Stopped by user")
+        print("\n👋 Stopped")
     except Exception as e:
         print(f"❌ Error: {e}")
 
 
 if __name__ == "__main__":
-    print("🚀 DCB Bank Voice Assistant - WebSocket Mode")
+    print("🚀 DCB Voice Bot - With Interruption Support")
+    print("="*80)
+    print("💡 Press ENTER anytime to interrupt bot and ask new question!")
     print("="*80 + "\n")
     asyncio.run(test_voice_websocket())

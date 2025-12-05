@@ -1,157 +1,3 @@
-# # from generate_rag_response import generate_rag_response
-# # import pyttsx3
-
-# # tts_engine = pyttsx3.init()
-# # tts_engine.setProperty('rate', 180)  # Speed
-# # tts_engine.setProperty('volume', 0.9)  # Volume
-
-# # def text_to_speech(text):
-# #     """4. NEW: Text → Speech (TTS)"""
-# #     print(" Speaking response...")
-# #     tts_engine.say(text)
-# #     tts_engine.runAndWait()
-# #     print("✔ Speech complete")
-# # fastapi_server.py - REST + WebSocket API for telephony integration
-# from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-# from fastapi.middleware.cors import CORSMiddleware
-# import asyncio
-
-# import numpy as np
-# # from streaming_voice_bot import StreamingVoiceBot
-# from main import StreamingVoiceBot
-# from session_manager import session_manager
-# import base64
-
-# app = FastAPI(title="DCB Voice Bot API")
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-# @app.websocket("/ws/voice/{session_id}")
-# async def voice_websocket(websocket: WebSocket, session_id: str):
-#     """WebSocket endpoint for real-time voice streaming"""
-#     await websocket.accept()
-#     print(f"✅ WebSocket connected: {session_id}")
-    
-#     # Get or create session
-#     from session_manager import session_manager
-#     session = session_manager.get_session(session_id)
-#     if not session:
-#         session_id = await session_manager.create_session()
-#         session = session_manager.get_session(session_id)
-    
-#     from main import StreamingVoiceBot
-#     bot = StreamingVoiceBot()
-#     bot.session_context = session["context"]
-    
-#     try:
-#         while True:
-#             # Receive audio chunk
-#             data = await websocket.receive_json()
-            
-#             if data["type"] == "audio":
-#                 try:
-#                     # Decode audio
-#                     audio_bytes = base64.b64decode(data["audio"])
-#                     audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
-                    
-#                     # Transcribe
-#                     query = await bot.transcribe_streaming(audio_array)
-#                     print(f"👤 Query: {query}")
-                    
-#                     # Send transcript immediately
-#                     await websocket.send_json({"type": "transcript", "text": query})
-                    
-#                     # Generate response
-#                     response = await bot.generate_response_streaming(query)
-#                     print(f"🤖 Response: {response}")
-                    
-#                     # Send response
-#                     await websocket.send_json({"type": "response", "text": response})
-                    
-#                     # Update session
-#                     session["context"].append({"user": query, "assistant": response})
-#                     session["query_count"] += 1
-                    
-#                     print("✅ Response sent successfully")
-                    
-#                 except Exception as e:
-#                     print(f"❌ Processing error: {e}")
-#                     import traceback
-#                     traceback.print_exc()
-                    
-#                     try:
-#                         await websocket.send_json({
-#                             "type": "error", 
-#                             "text": "Sorry, I encountered an error."
-#                         })
-#                     except:
-#                         pass
-                
-#     except WebSocketDisconnect:
-#         print(f"🔌 Session {session_id} disconnected")
-#     except Exception as e:
-#         print(f"❌ WebSocket error: {e}")
-#         import traceback
-#         traceback.print_exc()
-
-# from fastapi import File, UploadFile
-
-# @app.post("/api/voice-query")
-# async def voice_query_api(audio: UploadFile = File(...)):
-#     """Simple REST endpoint for voice queries"""
-#     try:
-#         # Read audio
-#         audio_bytes = await audio.read()
-#         audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
-        
-#         # Process
-#         from main import StreamingVoiceBot
-#         bot = StreamingVoiceBot()
-        
-#         query = await bot.transcribe_streaming(audio_array)
-#         response = await bot.generate_response_streaming(query)
-        
-#         return {
-#             "transcript": query,
-#             "response": response,
-#             "status": "success"
-#         }
-        
-#     except Exception as e:
-#         return {
-#             "error": str(e),
-#             "status": "error"
-#         }
-
-
-# @app.post("/api/ingest")
-# async def trigger_ingestion():
-#     """Trigger data ingestion from DCB Bank website"""
-#     from data_store import ingest_dcb_website
-    
-#     chunks = await ingest_dcb_website()
-#     return {"status": "success", "chunks_ingested": len(chunks)}
-
-# @app.get("/health")
-# async def health_check():
-#     """Health check endpoint"""
-#     active_sessions = len(session_manager.sessions)
-#     return {
-#         "status": "healthy",
-#         "active_sessions": active_sessions,
-#         "max_concurrent": session_manager.max_concurrent
-#     }
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
-
-
-
 # from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile
 # from fastapi.middleware.cors import CORSMiddleware
 # import asyncio
@@ -281,18 +127,16 @@
 # if __name__ == "__main__":
 #     import uvicorn
 #     uvicorn.run(app, host="localhost", port=8000, workers=4)
-
-
-
+# output_data.py - Fixed with proper TTS
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import numpy as np
-from main import StreamingVoiceBot
+from main import StreamingVoiceBot, stop_speaking
 from session_manager import session_manager
+from tts_streaming import tts
 import base64
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI(title="DCB Voice Bot API")
 
@@ -303,34 +147,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Thread pool for TTS (non-blocking)
-tts_executor = ThreadPoolExecutor(max_workers=4)
+
+@app.on_event("startup")
+async def startup_event():
+    """Start TTS on server start"""
+    tts.start()
+    print("✅ Server ready with TTS")
 
 
-def speak_sync(text):
-    """Sync TTS function"""
-    try:
-        import pyttsx3
-        engine = pyttsx3.init()
-        engine.setProperty('rate', 200)  # Faster speech
-        engine.setProperty('volume', 1.0)
-        engine.say(text)
-        engine.runAndWait()
-        engine.stop()
-        del engine
-    except Exception as e:
-        print(f"TTS Error: {e}")
-
-
-async def speak_async(text):
-    """Non-blocking TTS"""
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(tts_executor, speak_sync, text)
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    tts.shutdown()
 
 
 @app.websocket("/ws/voice/{session_id}")
 async def voice_websocket(websocket: WebSocket, session_id: str):
-    """Ultra-fast WebSocket with parallel processing"""
+    """WebSocket with interruption + TTS"""
     await websocket.accept()
     print(f"✅ Connected: {session_id}")
     
@@ -350,49 +183,56 @@ async def voice_websocket(websocket: WebSocket, session_id: str):
             if data["type"] == "audio":
                 start_time = time.time()
                 
+                # STOP previous TTS immediately
+                print("🛑 Stopping previous TTS...")
+                tts.stop()
+                stop_speaking.set()
+                await asyncio.sleep(0.1)
+                stop_speaking.clear()
+                
                 try:
                     # Decode audio
                     audio_bytes = base64.b64decode(data["audio"])
                     audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
                     
-                    # PARALLEL PROCESSING
-                    # 1. Start transcription
-                    transcription_task = asyncio.create_task(
-                        bot.transcribe_streaming(audio_array)
-                    )
-                    
-                    # Wait for transcription
-                    query = await transcription_task
+                    # Transcribe
+                    query = await bot.transcribe_streaming(audio_array)
                     transcription_time = time.time() - start_time
                     
-                    print(f"👤 [{transcription_time:.2f}s] Query: {query}")
+                    print(f"👤 [{transcription_time:.2f}s] {query}")
                     
-                    # Send transcript immediately
+                    # Send transcript
                     await websocket.send_json({
-                        "type": "transcript", 
+                        "type": "transcript",
                         "text": query,
                         "latency": round(transcription_time, 2)
                     })
                     
-                    # 2. Generate response (fast RAG)
+                    # Generate response
                     response_start = time.time()
-                    response = await bot.generate_response_streaming(query)
+                    
+                    # Use non-streaming for reliability (streaming was causing issues)
+                    full_response = await bot.generate_response_streaming(query, callback=None)
+                    
                     response_time = time.time() - response_start
+                    print(f"🤖 [{response_time:.2f}s] {full_response[:80]}...")
                     
-                    print(f"🤖 [{response_time:.2f}s] Response: {response[:100]}...")
-                    
-                    # Send response immediately
+                    # Send complete response
                     await websocket.send_json({
-                        "type": "response", 
-                        "text": response,
+                        "type": "response",
+                        "text": full_response,
                         "latency": round(response_time, 2)
                     })
                     
-                    # 3. TTS in parallel (don't wait)
-                    asyncio.create_task(speak_async(response))
+                    # SPEAK THE RESPONSE
+                    print("🔊 Starting TTS...")
+                    tts.speak_full(full_response)
                     
                     # Update session
-                    session["context"].append({"user": query, "assistant": response})
+                    session["context"].append({
+                        "user": query,
+                        "assistant": full_response
+                    })
                     session["query_count"] += 1
                     
                     total_time = time.time() - start_time
@@ -405,28 +245,34 @@ async def voice_websocket(websocket: WebSocket, session_id: str):
                     
                     await websocket.send_json({
                         "type": "error",
-                        "text": "Processing error"
+                        "text": str(e)
                     })
+            
+            elif data["type"] == "interrupt":
+                print("🛑 Manual interrupt")
+                tts.stop()
+                stop_speaking.set()
     
     except WebSocketDisconnect:
+        tts.stop()
         print(f"🔌 Disconnected: {session_id}")
     except Exception as e:
-        print(f"❌ WebSocket error: {e}")
+        print(f"❌ Error: {e}")
 
 
 @app.post("/api/voice-query")
 async def voice_query_api(audio: UploadFile = File(...)):
-    """REST API fallback"""
+    """REST API"""
     try:
         audio_bytes = await audio.read()
         audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
         
         bot = StreamingVoiceBot()
         query = await bot.transcribe_streaming(audio_array)
-        response = await bot.generate_response_streaming(query)
+        response = await bot.generate_response_streaming(query, callback=None)
         
-        # Async TTS (non-blocking)
-        asyncio.create_task(speak_async(response))
+        # Speak
+        tts.speak_full(response)
         
         return {
             "transcript": query,
@@ -437,28 +283,195 @@ async def voice_query_api(audio: UploadFile = File(...)):
         return {"error": str(e), "status": "error"}
 
 
-@app.post("/api/ingest")
-async def trigger_ingestion():
-    """Trigger data ingestion"""
-    from data_store import UniversalIngestionEngine
-    
-    engine = UniversalIngestionEngine(max_depth=2, max_pages=50)
-    
-    # Example sources
-    sources = ["https://www.dcbbank.com"]
-    stats = await engine.ingest(sources)
-    
-    return {"status": "success", "stats": stats}
-
-
 @app.get("/health")
 async def health_check():
-    """Health check"""
     return {
         "status": "healthy",
-        "active_sessions": len(session_manager.sessions),
-        "max_concurrent": session_manager.max_concurrent
+        "active_sessions": len(session_manager.sessions)
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+
+
+
+# from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile
+# from fastapi.middleware.cors import CORSMiddleware
+# import asyncio
+# import numpy as np
+# from main import StreamingVoiceBot
+# from session_manager import session_manager
+# import base64
+# import time
+# from concurrent.futures import ThreadPoolExecutor
+
+# app = FastAPI(title="DCB Voice Bot API")
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# # Thread pool for TTS (non-blocking)
+# tts_executor = ThreadPoolExecutor(max_workers=4)
+
+
+# def speak_sync(text):
+#     """Sync TTS function"""
+#     try:
+#         import pyttsx3
+#         engine = pyttsx3.init()
+#         engine.setProperty('rate', 200)  # Faster speech
+#         engine.setProperty('volume', 1.0)
+#         engine.say(text)
+#         engine.runAndWait()
+#         engine.stop()
+#         del engine
+#     except Exception as e:
+#         print(f"TTS Error: {e}")
+
+
+# async def speak_async(text):
+#     """Non-blocking TTS"""
+#     loop = asyncio.get_event_loop()
+#     await loop.run_in_executor(tts_executor, speak_sync, text)
+
+
+# @app.websocket("/ws/voice/{session_id}")
+# async def voice_websocket(websocket: WebSocket, session_id: str):
+#     """Ultra-fast WebSocket with parallel processing"""
+#     await websocket.accept()
+#     print(f"✅ Connected: {session_id}")
+    
+#     # Get/create session
+#     session = session_manager.get_session(session_id)
+#     if not session:
+#         session_id = await session_manager.create_session()
+#         session = session_manager.get_session(session_id)
+    
+#     bot = StreamingVoiceBot()
+#     bot.session_context = session["context"]
+    
+#     try:
+#         while True:
+#             data = await websocket.receive_json()
+            
+#             if data["type"] == "audio":
+#                 start_time = time.time()
+                
+#                 try:
+#                     # Decode audio
+#                     audio_bytes = base64.b64decode(data["audio"])
+#                     audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+                    
+#                     # PARALLEL PROCESSING
+#                     # 1. Start transcription
+#                     transcription_task = asyncio.create_task(
+#                         bot.transcribe_streaming(audio_array)
+#                     )
+                    
+#                     # Wait for transcription
+#                     query = await transcription_task
+#                     transcription_time = time.time() - start_time
+                    
+#                     print(f"👤 [{transcription_time:.2f}s] Query: {query}")
+                    
+#                     # Send transcript immediately
+#                     await websocket.send_json({
+#                         "type": "transcript", 
+#                         "text": query,
+#                         "latency": round(transcription_time, 2)
+#                     })
+                    
+#                     # 2. Generate response (fast RAG)
+#                     response_start = time.time()
+#                     response = await bot.generate_response_streaming(query)
+#                     response_time = time.time() - response_start
+                    
+#                     print(f"🤖 [{response_time:.2f}s] Response: {response[:100]}...")
+                    
+#                     # Send response immediately
+#                     await websocket.send_json({
+#                         "type": "response", 
+#                         "text": response,
+#                         "latency": round(response_time, 2)
+#                     })
+                    
+#                     # 3. TTS in parallel (don't wait)
+#                     asyncio.create_task(speak_async(response))
+                    
+#                     # Update session
+#                     session["context"].append({"user": query, "assistant": response})
+#                     session["query_count"] += 1
+                    
+#                     total_time = time.time() - start_time
+#                     print(f"✅ Total: {total_time:.2f}s\n")
+                    
+#                 except Exception as e:
+#                     print(f"❌ Error: {e}")
+#                     import traceback
+#                     traceback.print_exc()
+                    
+#                     await websocket.send_json({
+#                         "type": "error",
+#                         "text": "Processing error"
+#                     })
+    
+#     except WebSocketDisconnect:
+#         print(f"🔌 Disconnected: {session_id}")
+#     except Exception as e:
+#         print(f"❌ WebSocket error: {e}")
+
+
+# @app.post("/api/voice-query")
+# async def voice_query_api(audio: UploadFile = File(...)):
+#     """REST API fallback"""
+#     try:
+#         audio_bytes = await audio.read()
+#         audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+        
+#         bot = StreamingVoiceBot()
+#         query = await bot.transcribe_streaming(audio_array)
+#         response = await bot.generate_response_streaming(query)
+        
+#         # Async TTS (non-blocking)
+#         asyncio.create_task(speak_async(response))
+        
+#         return {
+#             "transcript": query,
+#             "response": response,
+#             "status": "success"
+#         }
+#     except Exception as e:
+#         return {"error": str(e), "status": "error"}
+
+
+# @app.post("/api/ingest")
+# async def trigger_ingestion():
+#     """Trigger data ingestion"""
+#     from data_store import UniversalIngestionEngine
+    
+#     engine = UniversalIngestionEngine(max_depth=2, max_pages=50)
+    
+#     # Example sources
+#     sources = ["https://www.dcbbank.com"]
+#     stats = await engine.ingest(sources)
+    
+#     return {"status": "success", "stats": stats}
+
+
+# @app.get("/health")
+# async def health_check():
+#     """Health check"""
+#     return {
+#         "status": "healthy",
+#         "active_sessions": len(session_manager.sessions),
+#         "max_concurrent": session_manager.max_concurrent
+#     }
 
 
 if __name__ == "__main__":
