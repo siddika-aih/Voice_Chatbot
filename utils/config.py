@@ -39,7 +39,7 @@ class Config:
     HYBRID_ALPHA: float = 0.5  # Balance between vector and BM25
     
     # Voice settings
-    VOICE_NAME: str = "Kore"  # Options: Kore, Zephyr, Aoede, Charon
+    VOICE_NAME: str = "Zephyr"  # Options: Kore, Zephyr, Aoede, Charon
     
     # Ingestion settings
     MAX_CRAWL_DEPTH: int = 2

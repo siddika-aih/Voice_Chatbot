@@ -2,7 +2,7 @@
 import asyncio
 import pyaudio
 from typing import Optional
-
+import threading
 from utils.config import config
 
 class AudioHandler:
@@ -12,6 +12,7 @@ class AudioHandler:
         self.pya = pyaudio.PyAudio()
         self.input_stream: Optional[pyaudio.Stream] = None
         self.output_stream: Optional[pyaudio.Stream] = None
+        self.output_lock = threading.Lock()  # ✅ Thread-safe output
         
     async def start_input_stream(self):
         """Initialize microphone input"""
@@ -23,7 +24,8 @@ class AudioHandler:
             rate=config.SAMPLE_RATE_INPUT,
             input=True,
             input_device_index=mic_info['index'],
-            frames_per_buffer=config.CHUNK_SIZE
+            frames_per_buffer=config.CHUNK_SIZE,
+            stream_callback=None
         )
         print("🎤 Microphone ready")
     
@@ -34,7 +36,9 @@ class AudioHandler:
             format=pyaudio.paInt16,
             channels=1,
             rate=config.SAMPLE_RATE_OUTPUT,
-            output=True
+            output=True,
+            frames_per_buffer=config.CHUNK_SIZE * 2,
+            stream_callback=None
         )
         print("🔊 Speaker ready")
     
@@ -47,13 +51,36 @@ class AudioHandler:
         )
     
     async def write_audio_chunk(self, data: bytes):
-        """Write audio chunk to speaker"""
-        await asyncio.to_thread(self.output_stream.write, data)
+        # """Write audio chunk to speaker"""
+        # await asyncio.to_thread(self.output_stream.write, data)
+        """Write audio chunk to speaker (thread-safe)"""
+        if not data:
+            return
+            
+        try:
+            with self.output_lock:
+                await asyncio.to_thread(self.output_stream.write, data)
+        except Exception as e:
+            print(f"⚠️ Speaker write error: {e}")
+    
+    # def cleanup(self):
+    #     """Close audio streams"""
+    #     if self.input_stream:
+    #         self.input_stream.close()
+    #     if self.output_stream:
+    #         self.output_stream.close()
+    #     self.pya.terminate()
     
     def cleanup(self):
         """Close audio streams"""
-        if self.input_stream:
-            self.input_stream.close()
-        if self.output_stream:
-            self.output_stream.close()
-        self.pya.terminate()
+        try:
+            if self.input_stream and self.input_stream.is_active():
+                self.input_stream.stop_stream()
+                self.input_stream.close()
+            if self.output_stream and self.output_stream.is_active():
+                self.output_stream.stop_stream()
+                self.output_stream.close()
+            self.pya.terminate()
+            print("🔇 Audio streams closed")
+        except Exception as e:
+            print(f"⚠️ Cleanup error: {e}")
