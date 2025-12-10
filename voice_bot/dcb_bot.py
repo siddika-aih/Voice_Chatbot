@@ -67,27 +67,27 @@ Your Response:"""
         
         return prompt
     
-    async def send_audio_to_gemini(self):
-        """Capture microphone and stream to Gemini"""
-        await self.audio_handler.start_input_stream()
+    # async def send_audio_to_gemini(self):
+    #     """Capture microphone and stream to Gemini"""
+    #     await self.audio_handler.start_input_stream()
         
-        while self.is_listening:
-            try:
-                audio_data = await self.audio_handler.read_audio_chunk()
-                await self.session.send(
-                    input={"data": audio_data, "mime_type": "audio/pcm"}
-                )
-                # ✅ Send keepalive every 5 seconds (prevents mid-sentence stops)
-                current_time = asyncio.get_event_loop().time()
-                if current_time - last_keepalive > 5.0:
-                    await self.session.send(
-                        input={"data": b"", "mime_type": "audio/pcm"}
-                    )
-                    last_keepalive = current_time
-            except Exception as e:
-                if self.is_listening:  # Only log if not shutting down
-                    print(f"❌ Audio send error: {e}")
-                break
+    #     while self.is_listening:
+    #         try:
+    #             audio_data = await self.audio_handler.read_audio_chunk()
+    #             await self.session.send(
+    #                 input={"data": audio_data, "mime_type": "audio/pcm"}
+    #             )
+    #             # ✅ Send keepalive every 5 seconds (prevents mid-sentence stops)
+    #             current_time = asyncio.get_event_loop().time()
+    #             if current_time - last_keepalive > 5.0:
+    #                 await self.session.send(
+    #                     input={"data": b"", "mime_type": "audio/pcm"}
+    #                 )
+    #                 last_keepalive = current_time
+    #         except Exception as e:
+    #             if self.is_listening:  # Only log if not shutting down
+    #                 print(f"❌ Audio send error: {e}")
+    #             break
     
     # async def receive_from_gemini(self):
     #     """Receive responses from Gemini with RAG injection"""
