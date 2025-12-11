@@ -3,7 +3,6 @@ import asyncio
 from typing import Optional
 from google import genai
 from google.genai import types
-
 from voice_bot.audio_handler import AudioHandler
 from agents.tools_executor import tool_executor
 from agents.agent_prompts import AGENTIC_SYSTEM_PROMPT, TOOL_CONFIRMATION_PROMPT
